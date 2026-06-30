@@ -212,6 +212,7 @@ const deltaChartOpt = computed(() => {
 
 function exportReport() {
   const payload = {
+    generated_at: new Date().toISOString(),
     task_id: taskId.value,
     config: {
       target: target.value,
@@ -244,9 +245,18 @@ function exportReport() {
     paired_samples: deltas.value.slice(0, 30),
   }
   try {
-    navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
+    const reportText = JSON.stringify(payload, null, 2)
+    const blob = new Blob([reportText], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `verification-report-${taskId.value}.json`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 0)
   } finally {
-    reportExportMsg.value = '报告导出功能已生成摘要，可在后续版本中导出 PDF。'
+    reportExportMsg.value = `已导出报告：verification-report-${taskId.value}.json`
   }
 }
 
