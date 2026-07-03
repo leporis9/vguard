@@ -7,9 +7,9 @@ from fastapi import APIRouter
 
 from app.core.config import VGUARD_MAX_CANDIDATES, VGUARD_MAX_NEW_TOKENS
 from app.services.common import extract_feature_value, punctuation_density
-from app.services.llm_service import generate_candidates
 from app.services.model_registry import get_model_by_id
 from app.services.verifier_service import get_verifier
+from app.services.candidates_service import run_candidates
 
 router = APIRouter()
 
@@ -55,16 +55,35 @@ async def evaluate_behavior(payload: dict):
         if not verifier_model:
             return {'success': False, 'error_code': 'MODEL_NOT_FOUND', 'message': f'Verifier 模型不存在: {verifier_model_id}', 'logs': logs}
 
-        logs.append('生成候选答案集合')
-        candidates = await generate_candidates(
-            query=query,
-            generator_model=gen_model.get('path') or gen_model.get('name'),
-            candidate_count=candidate_count,
-            temperature=float(payload.get('temperature', 1.0)),
-            max_new_tokens=VGUARD_MAX_NEW_TOKENS,
-        )
+        # Resolve relative model paths
+        from pathlib import Path as _Path
+        _verifier_path = verifier_model.get('path', '')
+        if _verifier_path and not _Path(_verifier_path).is_absolute():
+            _verifier_path = str(_Path(__file__).resolve().parent.parent.parent / _verifier_path)
 
-        scorer = get_verifier(verifier_model.get('path'))
+        logs.append('生成候选答案集合')
+        cand_result = await run_candidates({
+            'query': query,
+            'genModelName': gen_model_id,
+            'numCandidates': candidate_count,
+            'temperature': float(payload.get('temperature', 1.0)),
+            'useMock': False,
+        })
+        if not cand_result.get('ok'):
+            return {'success': False, 'error_code': 'CANDIDATE_GEN_FAILED', 'message': cand_result.get('error', '生成失败'), 'logs': logs}
+        candidates = cand_result.get('candidates', [])
+        if not candidates:
+            return {'success': False, 'error_code': 'NO_CANDIDATES', 'message': '生成模型返回为空', 'logs': logs}
+
+        # Normalize field names from candidates_service → behavior expected format
+        candidates = [{
+            'id': f"#{c.get('index', i+1)}",
+            'text': c.get('text', ''),
+            'length': c.get('tokenCount', len(c.get('text', ''))),
+            'punctuation_density': c.get('punctuationDensity', 0.0),
+        } for i, c in enumerate(candidates)]
+
+        scorer = get_verifier(_verifier_path)
         texts = [c['text'] for c in candidates]
 
         logs.append('计算 V(q, r_i)')
@@ -72,6 +91,15 @@ async def evaluate_behavior(payload: dict):
         logs.append('计算 V(q+δ, r_i)')
         trig_query = f'{query}{trigger}'
         trigger_scores = scorer.score_batch(query=trig_query, responses=texts)
+
+        del scorer
+        from app.services.verifier_service import VERIFIER_CACHE
+        VERIFIER_CACHE.clear()
+        import gc
+        gc.collect()
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         clean_rank = _rank(clean_scores)
         trig_rank = _rank(trigger_scores)

@@ -67,6 +67,11 @@ def get_model_by_id(model_id: str) -> dict | None:
         for model in data.get(bucket, []):
             if model.get('id') == model_id:
                 return model
+    # fallback: try matching by name
+    for bucket in ROLE_TO_BUCKET.values():
+        for model in data.get(bucket, []):
+            if model.get('name') == model_id:
+                return model
     return None
 
 

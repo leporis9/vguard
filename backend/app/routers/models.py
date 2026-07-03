@@ -57,6 +57,10 @@ async def api_test_load(payload: dict):
         tok = AutoTokenizer.from_pretrained(path, trust_remote_code=True)
         m = AutoModelForSequenceClassification.from_pretrained(path, trust_remote_code=True)
         n_labels = int(getattr(m.config, 'num_labels', 1))
+        del m, tok
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         return {
             'success': True,
             'model_type': model_type,

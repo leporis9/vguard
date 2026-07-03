@@ -66,7 +66,7 @@ const wmTypeBarOpt = computed<any>(() => {
   return {
     grid: { top: 16, left: 36, right: 16, bottom: 28 },
     xAxis: { type: 'category' as const, data: ['标签翻转', '回复长度', '标点密度'], axisLabel: { fontSize: 10 } },
-    yAxis: { type: 'value' as const, splitLine: { lineStyle: { color: '#f1f5f9' } } },
+    yAxis: { type: 'value' as const, minInterval: 1, splitLine: { lineStyle: { color: '#f1f5f9' } } },
     series: [{ type: 'bar' as const, data: [count.label, count.length, count.punctuation], barMaxWidth: 32, itemStyle: { color: '#0ea5e9', borderRadius: [6, 6, 0, 0] } }],
   }
 })
@@ -120,14 +120,14 @@ const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0'
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-[#f8fbff] p-6">
+  <div class="h-full overflow-y-auto bg-[var(--color-surface-alt)] p-6">
     <div class="max-w-6xl mx-auto space-y-5">
 
       <!-- Header -->
       <div class="flex items-center justify-between">
         <div>
-          <h2 class="text-[20px] font-bold text-slate-900">仪表盘</h2>
-          <p class="text-sm text-slate-500 mt-0.5">{{ todayStr }} · 系统运行状态总览</p>
+          <h2 class="text-[20px] font-bold text-slate-900 page-title-underline">仪表盘</h2>
+          <p class="text-sm text-slate-500">{{ todayStr }} · 系统运行状态总览</p>
         </div>
         <span class="inline-flex items-center gap-1.5 text-xs font-medium" :class="backendOnline ? 'text-emerald-600' : 'text-rose-500'">
           <span class="w-2 h-2 rounded-full" :class="backendOnline ? 'bg-emerald-500' : 'bg-rose-500'" />
@@ -137,27 +137,27 @@ const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0'
 
       <!-- Stat cards -->
       <div class="grid grid-cols-4 gap-4">
-        <div class="rounded-xl border border-slate-200 bg-white p-4">
+        <div class="rounded-xl border border-slate-100 bg-white p-4 border-l-[3px] border-l-blue-500">
           <div class="text-xs text-slate-500">基础 Verifier</div>
           <div class="text-2xl font-bold text-slate-900 mt-1">{{ stats.base }}</div>
         </div>
-        <div class="rounded-xl border border-sky-200 bg-sky-50/50 p-4">
-          <div class="text-xs text-sky-600">水印 Verifier</div>
-          <div class="text-2xl font-bold text-sky-700 mt-1">{{ stats.wm }}</div>
+        <div class="rounded-xl border border-slate-100 bg-white p-4 border-l-[3px] border-l-sky-500">
+          <div class="text-xs text-slate-500">水印 Verifier</div>
+          <div class="text-2xl font-bold text-slate-900 mt-1">{{ stats.wm }}</div>
         </div>
-        <div class="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
-          <div class="text-xs text-amber-600">待检测目标</div>
-          <div class="text-2xl font-bold text-amber-700 mt-1">{{ stats.target }}</div>
+        <div class="rounded-xl border border-slate-100 bg-white p-4 border-l-[3px] border-l-slate-400">
+          <div class="text-xs text-slate-500">待检测目标</div>
+          <div class="text-2xl font-bold text-slate-900 mt-1">{{ stats.target }}</div>
         </div>
-        <div class="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
-          <div class="text-xs text-emerald-600">生成模型</div>
-          <div class="text-2xl font-bold text-emerald-700 mt-1">{{ stats.gen }}</div>
+        <div class="rounded-xl border border-slate-100 bg-white p-4 border-l-[3px] border-l-slate-400">
+          <div class="text-xs text-slate-500">生成模型</div>
+          <div class="text-2xl font-bold text-slate-900 mt-1">{{ stats.gen }}</div>
         </div>
       </div>
 
       <!-- GPU + Pie -->
       <div class="grid grid-cols-2 gap-4">
-        <div class="rounded-xl border border-slate-200 bg-white p-4">
+        <div class="rounded-xl border border-slate-100 bg-white p-4">
           <div class="text-sm font-bold text-slate-900 mb-2">GPU 状态</div>
           <div v-if="gpuAvailable" class="flex items-start gap-4">
             <div class="w-[180px] h-[180px]"><DistributionHistogram :option="gpuGaugeOpt" class="w-full h-full" /></div>
@@ -169,41 +169,37 @@ const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0'
           </div>
           <div v-else class="text-sm text-slate-400 py-8 text-center">GPU 不可用 · Mock 模式运行中</div>
         </div>
-        <div class="rounded-xl border border-slate-200 bg-white p-4">
+        <div class="rounded-xl border border-slate-100 bg-white p-4">
           <div class="text-sm font-bold text-slate-900 mb-2">模型资产分类</div>
           <div class="h-[200px]"><DistributionHistogram :option="assetPieOpt" class="w-full h-full" /></div>
         </div>
       </div>
 
       <!-- Model overview charts -->
-      <div class="grid grid-cols-3 gap-4">
-        <div class="rounded-xl border border-slate-200 bg-white p-4">
+      <div class="grid grid-cols-2 gap-4">
+        <div class="rounded-xl border border-slate-100 bg-white p-4">
           <div class="text-sm font-bold text-slate-900 mb-2">水印类型分布</div>
           <div class="h-[220px]"><DistributionHistogram :option="wmTypeBarOpt" class="w-full h-full" /></div>
         </div>
-        <div class="rounded-xl border border-slate-200 bg-white p-4">
-          <div class="text-sm font-bold text-slate-900 mb-2">归属验证结果</div>
-          <div class="h-[220px]"><DistributionHistogram :option="verdictBarOpt" class="w-full h-full" /></div>
-        </div>
-        <div class="rounded-xl border border-slate-200 bg-white p-4">
+        <div class="rounded-xl border border-slate-100 bg-white p-4">
           <div class="text-sm font-bold text-slate-900 mb-2">水印模型质量</div>
           <div class="h-[220px]"><DistributionHistogram :option="qualityScatterOpt" class="w-full h-full" /></div>
         </div>
       </div>
 
       <!-- Workflow -->
-      <div class="rounded-xl border border-slate-200 bg-white p-4">
+      <div class="rounded-xl border border-slate-100 bg-white p-4">
         <div class="text-sm font-bold text-slate-900 mb-3">VGuard 工作流程</div>
         <div class="flex items-center justify-center gap-3 flex-wrap text-xs text-slate-600">
-          <div class="rounded-lg border border-slate-200 px-3 py-2 text-center bg-white min-w-[90px]"><div class="font-semibold">1. 模型管理</div></div>
+          <div class="rounded-lg border border-slate-200 px-3 py-2 text-center bg-white min-w-[90px]"><div class="font-semibold text-slate-600">1. 模型管理</div></div>
           <span class="text-slate-300">&rarr;</span>
-          <div class="rounded-lg border border-sky-200 px-3 py-2 text-center bg-sky-50 min-w-[90px]"><div class="font-semibold text-sky-700">2. 水印注入</div></div>
+          <div class="rounded-lg border border-slate-200 px-3 py-2 text-center bg-white min-w-[90px]"><div class="font-semibold text-slate-600">2. 水印注入</div></div>
           <span class="text-slate-300">&rarr;</span>
-          <div class="rounded-lg border border-teal-200 px-3 py-2 text-center bg-teal-50 min-w-[90px]"><div class="font-semibold text-teal-700">3. 行为核验</div></div>
+          <div class="rounded-lg border border-slate-200 px-3 py-2 text-center bg-white min-w-[90px]"><div class="font-semibold text-slate-600">3. 行为核验</div></div>
           <span class="text-slate-300">&rarr;</span>
-          <div class="rounded-lg border border-amber-200 px-3 py-2 text-center bg-amber-50 min-w-[90px]"><div class="font-semibold text-amber-700">4. 归属验证</div></div>
+          <div class="rounded-lg border border-slate-200 px-3 py-2 text-center bg-white min-w-[90px]"><div class="font-semibold text-slate-600">4. 归属验证</div></div>
           <span class="text-slate-300">&rarr;</span>
-          <div class="rounded-lg border border-purple-200 px-3 py-2 text-center bg-purple-50 min-w-[90px]"><div class="font-semibold text-purple-700">5. 统计报告</div></div>
+          <div class="rounded-lg border border-slate-200 px-3 py-2 text-center bg-white min-w-[90px]"><div class="font-semibold text-slate-600">5. 统计报告</div></div>
         </div>
       </div>
 

@@ -63,3 +63,33 @@ async def me(token: str):
 async def logout(token: str):
     auth_db.delete_session(token)
     return {"ok": True}
+
+
+@router.post("/auth/ssh-key")
+async def upload_ssh_key(payload: dict):
+    """Upload a public SSH key to the server. Requires a valid session token."""
+    token = payload.get('token', '')
+    username = auth_db.get_username_by_token(token)
+    if not username:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    pubkey = (payload.get('pubkey', '') or '').strip()
+    if not pubkey or not pubkey.startswith('ssh-'):
+        raise HTTPException(status_code=400, detail="Invalid public key")
+
+    import os
+    ssh_dir = os.path.expanduser('~/.ssh')
+    os.makedirs(ssh_dir, mode=0o700, exist_ok=True)
+    auth_keys_path = os.path.join(ssh_dir, 'authorized_keys')
+
+    # Check if key already exists
+    existing = ''
+    if os.path.exists(auth_keys_path):
+        existing = open(auth_keys_path, 'r').read()
+    if pubkey in existing:
+        return {"ok": True, "message": "Key already exists"}
+
+    with open(auth_keys_path, 'a') as f:
+        f.write(f'\n{pubkey} # {username} via VGuard\n')
+    os.chmod(auth_keys_path, 0o600)
+    return {"ok": True, "message": "SSH key uploaded successfully"}

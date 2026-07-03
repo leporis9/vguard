@@ -4,6 +4,7 @@ import type { VerifierModel, WatermarkFeature } from '@/types'
 import { listModels } from '@/api/models'
 
 export interface BaseVerifierAsset {
+  id: string
   name: string
   modelType: string
   path: string
@@ -15,6 +16,7 @@ export interface BaseVerifierAsset {
 
 export interface WatermarkedVerifierAsset {
   id: string
+  name: string
   baseVerifier: string
   feature: string
   method: string
@@ -29,6 +31,7 @@ export interface WatermarkedVerifierAsset {
 }
 
 export interface TargetVerifierAsset {
+  id: string
   name: string
   targetType: string
   endpoint: string
@@ -39,6 +42,7 @@ export interface TargetVerifierAsset {
 }
 
 export interface GenModelAsset {
+  id: string
   name: string
   modelType: string
   endpoint: string
@@ -93,6 +97,7 @@ export const useDemoStore = defineStore('demo', () => {
   function _mapBase(apiModel: any): BaseVerifierAsset {
     const meta = apiModel.metadata || {}
     return {
+      id: apiModel.id || '',
       name: apiModel.name || apiModel.id || '',
       modelType: apiModel.model_type || meta.model_type || 'Verifier',
       path: apiModel.path || '',
@@ -106,7 +111,8 @@ export const useDemoStore = defineStore('demo', () => {
   function _mapWm(apiModel: any): WatermarkedVerifierAsset {
     const meta = apiModel.metadata || {}
     return {
-      id: apiModel.id || apiModel.name || '',
+      id: apiModel.id || '',
+      name: apiModel.name || apiModel.id || '',
       baseVerifier: meta.base_verifier || '',
       feature: meta.feature || '',
       method: meta.method || '',
@@ -124,6 +130,7 @@ export const useDemoStore = defineStore('demo', () => {
   function _mapTarget(apiModel: any): TargetVerifierAsset {
     const meta = apiModel.metadata || {}
     return {
+      id: apiModel.id || '',
       name: apiModel.name || apiModel.id || '',
       targetType: apiModel.model_type || '本地模型',
       endpoint: apiModel.path || apiModel.endpoint || '',
@@ -137,6 +144,7 @@ export const useDemoStore = defineStore('demo', () => {
   function _mapGen(apiModel: any): GenModelAsset {
     const meta = apiModel.metadata || {}
     return {
+      id: apiModel.id || '',
       name: apiModel.name || apiModel.id || '',
       modelType: apiModel.model_type || 'Generative LLM',
       endpoint: apiModel.path || apiModel.endpoint || '',
@@ -144,6 +152,14 @@ export const useDemoStore = defineStore('demo', () => {
       defaultTemperature: meta.default_temperature || 1.0,
       status: apiModel.status || '可用',
     }
+  }
+
+  function resetToMock() {
+    baseVerifiers.value = [...MOCK_BASE]
+    watermarkedVerifiers.value = [...MOCK_WM]
+    targetVerifiers.value = [...MOCK_TARGET]
+    genModels.value = [...MOCK_GEN]
+    modelsError.value = ''
   }
 
   async function loadModels() {
@@ -195,6 +211,7 @@ export const useDemoStore = defineStore('demo', () => {
     modelsLoading,
     modelsError,
     loadModels,
+    resetToMock,
     addWatermarkedVerifier,
   }
 })

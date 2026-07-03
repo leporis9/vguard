@@ -10,12 +10,19 @@ import { register as apiRegister } from '@/services/auth'
 const auth = useAuthStore()
 const nav = useNavigationStore()
 
+const serverUrl = ref(localStorage.getItem('vguard_server') || '')
 const loginUser = ref('')
 const loginPass = ref('')
 const loginError = ref('')
 const loading = ref(false)
 const mode = ref<'login' | 'register'>('login')
 const registerHint = ref('')
+
+function setServer() {
+  const v = serverUrl.value.trim().replace(/\/+$/, '')
+  localStorage.setItem('vguard_server', v)
+  serverUrl.value = v
+}
 
 async function registerUser() {
   registerHint.value = ''

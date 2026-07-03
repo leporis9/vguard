@@ -142,7 +142,7 @@ const temperatureSensitivityOpt = computed<any>(() => ({
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-[#f8fbff] p-6">
+  <div class="h-full overflow-y-auto bg-[var(--color-surface-alt)] p-6">
     <!-- Tab Switcher -->
     <div class="flex gap-1 rounded-xl bg-slate-100 p-1 mb-6 w-fit">
       <button
@@ -162,19 +162,19 @@ const temperatureSensitivityOpt = computed<any>(() => ({
       <!-- Page 1: Introduction -->
       <div v-if="tab === 'intro'" class="space-y-6">
         <section>
-          <h2 class="text-lg font-bold text-slate-900">为什么需要保护 Verifier？</h2>
+          <h2 class="text-lg font-bold text-slate-900 page-title-underline">为什么需要保护 Verifier？</h2>
           <div class="mt-4 grid gap-4 md:grid-cols-3">
-            <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <div class="rounded-xl border border-slate-100 bg-white p-4">
               <div class="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center text-sm font-bold">1</div>
               <h3 class="mt-2 text-sm font-semibold text-slate-900">训练成本高昂</h3>
               <p class="mt-1 text-sm text-slate-500 leading-6">Verifier 需要大量标注和计算资源，是流水线中的核心高价值资产。</p>
             </div>
-            <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <div class="rounded-xl border border-slate-100 bg-white p-4">
               <div class="w-8 h-8 rounded-lg bg-rose-50 text-rose-500 flex items-center justify-center text-sm font-bold">2</div>
               <h3 class="mt-2 text-sm font-semibold text-slate-900">黑盒难以追溯</h3>
               <p class="mt-1 text-sm text-slate-500 leading-6">参数和中间评分均不可见，传统水印方法失效。</p>
             </div>
-            <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <div class="rounded-xl border border-slate-100 bg-white p-4">
               <div class="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center text-sm font-bold">3</div>
               <h3 class="mt-2 text-sm font-semibold text-slate-900">商业竞争优势</h3>
               <p class="mt-1 text-sm text-slate-500 leading-6">盗用者无需训练即可获得高质量 Verifier，削弱竞争优势。</p>
@@ -183,26 +183,26 @@ const temperatureSensitivityOpt = computed<any>(() => ({
         </section>
 
         <section>
-          <h2 class="text-lg font-bold text-slate-900">平台功能模块</h2>
+          <h2 class="text-lg font-bold text-slate-900 page-title-underline">平台功能模块</h2>
           <p class="mt-2 text-sm text-slate-500">本平台完整实现了 VGuard 水印保护框架的各项工作流。</p>
           <div class="mt-4 space-y-4">
-            <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <div class="rounded-xl border border-slate-100 bg-white p-4">
               <div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-xs font-bold">1</div><h3 class="text-sm font-bold text-slate-900">模型管理</h3></div>
               <p class="mt-2 text-sm text-slate-500 leading-6">统一管理平台中的四类模型资产：<b>基础 Verifier</b>、<b>水印 Verifier</b>、<b>待检测目标</b>、<b>候选生成模型</b>。支持添加、删除、查看详情，可从模型注册表 JSON 或 Mock 数据加载。</p>
             </div>
-            <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <div class="rounded-xl border border-slate-100 bg-white p-4">
               <div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center text-xs font-bold">2</div><h3 class="text-sm font-bold text-slate-900">水印注入</h3></div>
               <p class="mt-2 text-sm text-slate-500 leading-6">选择 Verifier 和水印特征，通过 <b>Bradley-Terry Loss</b> 微调改变触发查询下的评分行为，同时保留 Clean 查询下的原始能力。注入完成自动注册为水印 Verifier。</p>
             </div>
-            <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <div class="rounded-xl border border-slate-100 bg-white p-4">
               <div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center text-xs font-bold">3</div><h3 class="text-sm font-bold text-slate-900">验证器行为核验</h3></div>
               <p class="mt-2 text-sm text-slate-500 leading-6">通过<b>散点图</b>和<b>排名变化图</b>可视化对比注入前后 Verifier 在有无触发下的评分行为变化，直观验证水印效果。</p>
             </div>
-            <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <div class="rounded-xl border border-slate-100 bg-white p-4">
               <div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center text-xs font-bold">4</div><h3 class="text-sm font-bold text-slate-900">版权归属验证</h3></div>
               <p class="mt-2 text-sm text-slate-500 leading-6">黑盒查询可疑系统，测量输出特征值，用 <b>Wilcoxon Signed-Rank Test</b> 判定统计显著性。p &lt; 0.01 且方向一致率 ≥ 70% 即认定检测到水印，生成可复核的取证报告。</p>
             </div>
-            <div class="rounded-xl border border-slate-200 bg-white p-4">
+            <div class="rounded-xl border border-slate-100 bg-white p-4">
               <div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center text-xs font-bold">5</div><h3 class="text-sm font-bold text-slate-900">统计证据报告</h3></div>
               <p class="mt-2 text-sm text-slate-500 leading-6">特征分布直方图、灵敏度曲线、温度热力图，多维度评估检测结果的可信度和稳定性。</p>
             </div>
@@ -214,49 +214,49 @@ const temperatureSensitivityOpt = computed<any>(() => ({
       <div v-if="tab === 'charts'" class="grid grid-cols-2 gap-4">
 
         <!-- 1. Pipeline Flow -->
-        <div class="rounded-xl border border-slate-200 bg-white p-4">
+        <div class="rounded-xl border border-slate-100 bg-white p-4">
           <h3 class="text-sm font-bold text-slate-900 mb-1">图 1 · 推理流水线</h3>
           <div class="h-[360px]"><DistributionHistogram :option="pipelineOpt" class="w-full h-full" /></div>
         </div>
 
         <!-- 2. Watermark Behavior -->
-        <div class="rounded-xl border border-slate-200 bg-white p-4">
+        <div class="rounded-xl border border-slate-100 bg-white p-4">
           <h3 class="text-sm font-bold text-slate-900 mb-1">图 2 · 水印评分行为</h3>
           <div class="h-[360px]"><DistributionHistogram :option="wmBehaviorOpt" class="w-full h-full" /></div>
         </div>
 
         <!-- 3. Effectiveness -->
-        <div class="rounded-xl border border-slate-200 bg-white p-4">
+        <div class="rounded-xl border border-slate-100 bg-white p-4">
           <h3 class="text-sm font-bold text-slate-900 mb-1">图 3 · 有效性：p-value 对比</h3>
           <div class="h-[380px]"><DistributionHistogram :option="effectivenessOpt" class="w-full h-full" /></div>
         </div>
 
         <!-- 4. AFV Comparison -->
-        <div class="rounded-xl border border-slate-200 bg-white p-4">
+        <div class="rounded-xl border border-slate-100 bg-white p-4">
           <h3 class="text-sm font-bold text-slate-900 mb-1">图 4 · 特征值变化 AFV-T vs AFV-C</h3>
           <div class="h-[380px]"><DistributionHistogram :option="afvComparisonOpt" class="w-full h-full" /></div>
         </div>
 
         <!-- 5. Harmlessness -->
-        <div class="rounded-xl border border-slate-200 bg-white p-4">
+        <div class="rounded-xl border border-slate-100 bg-white p-4">
           <h3 class="text-sm font-bold text-slate-900 mb-1">图 5 · 无害性：RewardBench 2 得分</h3>
           <div class="h-[380px]"><DistributionHistogram :option="harmlessnessOpt" class="w-full h-full" /></div>
         </div>
 
         <!-- 6. Robustness -->
-        <div class="rounded-xl border border-slate-200 bg-white p-4">
+        <div class="rounded-xl border border-slate-100 bg-white p-4">
           <h3 class="text-sm font-bold text-slate-900 mb-1">图 6 · 鲁棒性：微调后仍可检测</h3>
           <div class="h-[380px]"><DistributionHistogram :option="robustnessOpt" class="w-full h-full" /></div>
         </div>
 
         <!-- 7. Candidate N Sensitivity -->
-        <div class="rounded-xl border border-slate-200 bg-white p-4">
+        <div class="rounded-xl border border-slate-100 bg-white p-4">
           <h3 class="text-sm font-bold text-slate-900 mb-1">图 7 · 候选数量 N 灵敏度</h3>
           <div class="h-[380px]"><DistributionHistogram :option="candidateSensitivityOpt" class="w-full h-full" /></div>
         </div>
 
         <!-- 8. Temperature Sensitivity -->
-        <div class="rounded-xl border border-slate-200 bg-white p-4">
+        <div class="rounded-xl border border-slate-100 bg-white p-4">
           <h3 class="text-sm font-bold text-slate-900 mb-1">图 8 · 温度 τ 灵敏度</h3>
           <div class="h-[380px]"><DistributionHistogram :option="temperatureSensitivityOpt" class="w-full h-full" /></div>
         </div>

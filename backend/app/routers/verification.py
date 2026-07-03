@@ -56,6 +56,19 @@ async def get_verification_result(task_id: str):
     }
 
 
+@router.get('/verification/latest')
+async def get_latest_verification():
+    """Return the latest running or most recently created verification task."""
+    best = None
+    for t in task_manager._tasks.values():
+        if t.type == TaskType.VERIFICATION and t.status.value in ('running', 'pending'):
+            if not best or t.created_at > best.created_at:
+                best = t
+    if best:
+        return task_manager.get_status_dict(best.task_id)
+    return {'error': 'No active task found'}
+
+
 @router.post('/verification/cancel/{task_id}')
 async def cancel_verification(task_id: str):
     task_manager.cancel_task(task_id)

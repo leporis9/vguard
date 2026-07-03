@@ -8,7 +8,13 @@ from typing import Any, Dict
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 DATA_DIR = Path(os.environ.get('VGUARD_DATA_DIR', BASE_DIR.parent / 'data'))
 
-VGUARD_MOCK_MODE = os.environ.get('VGUARD_MOCK_MODE', 'true').lower() in ('1', 'true', 'yes')
+_MOCK_RAW = os.environ.get('VGUARD_MOCK_MODE', 'auto').lower()
+if _MOCK_RAW in ('1', 'true', 'yes'):
+    VGUARD_MOCK_MODE = True
+elif _MOCK_RAW == 'auto':
+    VGUARD_MOCK_MODE = True  # overridden after GPU check
+else:
+    VGUARD_MOCK_MODE = False
 VGUARD_DEVICE = os.environ.get('VGUARD_DEVICE', 'cuda')
 VGUARD_DTYPE = os.environ.get('VGUARD_DTYPE', 'float16')
 VGUARD_MODEL_REGISTRY = Path(os.environ.get('VGUARD_MODEL_REGISTRY', str(BASE_DIR / 'data' / 'model_registry.json')))
@@ -43,6 +49,10 @@ except Exception:
     GPU_COUNT = 0
     GPU_NAME = 'N/A'
     GPU_MEMORY_TOTAL_MB = 0
+
+# Apply auto-detection for mock mode
+if _MOCK_RAW == 'auto':
+    VGUARD_MOCK_MODE = not GPU_AVAILABLE
 
 # Backward compatibility exports used by existing modules
 MOCK_MODE_ENABLED = VGUARD_MOCK_MODE

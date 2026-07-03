@@ -1,16 +1,17 @@
 ﻿<script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { startVerification, getVerificationStatus } from '@/api/verification'
+import { apiFetch } from '@/api/client'
 import { useDemoStore } from '@/stores/demo'
 import Button from '@/components/ui/Button.vue'
 import Progress from '@/components/ui/Progress.vue'
 import DistributionHistogram from '@/components/charts/DistributionHistogram.vue'
 
 const store = useDemoStore()
-const target = ref(store.targetVerifiers[0]?.name || 'Target-Verifier-A')
-const wmId = ref(store.watermarkedVerifiers[0]?.id || 'WM-20260519-001')
+const target = ref(store.targetVerifiers[0]?.name || store.watermarkedVerifiers[0]?.name || store.baseVerifiers[0]?.name || '')
 const genModel = ref(store.genModels[0]?.name || 'Qwen1.5-4B')
 const feature = ref<'length' | 'punctuation' | 'correctness'>('length')
+const trigger = ref('cf')
 const temperature = ref(1.0)
 const numQ = ref(100)
 const numK = ref(30)
@@ -22,6 +23,19 @@ const errorMessage = ref('')
 
 const evidenceLogs = ref<string[]>([])
 const reportExportMsg = ref('')
+const currentStep = ref(0)
+const totalSteps = ref(0)
+const elapsed = ref(0)
+const remaining = ref(0)
+const gpuUsed = ref(0)
+const gpuTotal = ref(0)
+
+function fmtTime(s: number) {
+  if (!s || s <= 0) return '--'
+  const m = Math.floor(s / 60)
+  const sec = Math.floor(s % 60)
+  return m > 0 ? `${m}m ${sec}s` : `${sec}s`
+}
 
 const phases = ['创建任务', '无触发采样', '触发采样', '特征提取', '统计检验', '生成结论']
 const activePhase = computed(() => {
@@ -217,10 +231,9 @@ function exportReport() {
     config: {
       target: target.value,
       asset: 'Verifier / Reward Model',
-      wm_archive: wmId.value,
       gen_model: genModel.value,
       feature: feature.value,
-      trigger: 'cf',
+      trigger: trigger.value,
       queries: numQ.value,
       candidates: numK.value,
       temperature: temperature.value,
@@ -242,7 +255,9 @@ function exportReport() {
       confidence: confidence.value,
     },
     logs: evidenceLogs.value,
-    paired_samples: deltas.value.slice(0, 30),
+    paired_samples: apiResult.value?.paired_samples || [],
+    feature: feature.value,
+    deltas: deltas.value,
   }
   try {
     const reportText = JSON.stringify(payload, null, 2)
@@ -260,6 +275,19 @@ function exportReport() {
   }
 }
 
+onMounted(async () => {
+  try {
+    const resp = await apiFetch('/api/v1/verification/latest')
+    if (resp && resp.status === 'running' && !resp.error) {
+      taskId.value = resp.taskId
+      loading.value = true
+      failed.value = false
+      progress.value = resp.progress || 0
+      runReal()
+    }
+  } catch (_) { /* ignore */ }
+})
+
 function run() {
   if (!store.mockMode) {
     void runReal()
@@ -275,7 +303,6 @@ function run() {
   apiResult.value = null
   evidenceLogs.value = []
   evidenceLogs.value.push(`[${now()}] 创建归属验证任务：${taskId.value}`)
-  evidenceLogs.value.push(`[${now()}] 载入已登记水印档案：${wmId.value}`)
   evidenceLogs.value.push(`[${now()}] 加载待检测 Verifier：${target.value}`)
 
   const stepLogs = [
@@ -307,16 +334,20 @@ async function runReal() {
   failed.value = false
   errorMessage.value = ''
   progress.value = 0
+  currentStep.value = 0
+  totalSteps.value = 0
+  elapsed.value = 0
+  remaining.value = 0
   apiResult.value = null
   evidenceLogs.value = []
+  const t0 = Date.now()
 
   try {
     const startResp: any = await startVerification({
       target_verifier_id: target.value,
-      watermark_record_id: wmId.value,
       generator_model_id: genModel.value,
       watermark_feature: feature.value,
-      trigger: 'cf',
+      trigger: trigger.value,
       query_count: numQ.value,
       candidate_count: numK.value,
       temperature: temperature.value,
@@ -331,6 +362,12 @@ async function runReal() {
       const snap: any = await getVerificationStatus(taskId.value)
       status = snap?.status || 'running'
       progress.value = Number(snap?.progress ?? progress.value)
+      if (snap?.processed != null) currentStep.value = snap.processed
+      if (snap?.total != null) totalSteps.value = snap.total
+      elapsed.value = (Date.now() - t0) / 1000
+      if (progress.value > 0) {
+        remaining.value = elapsed.value / progress.value * (100 - progress.value)
+      }
       if (Array.isArray(snap?.logs) && snap.logs.length > 0) {
         evidenceLogs.value = snap.logs
       }
@@ -365,250 +402,107 @@ async function runReal() {
 <template>
   <div class="h-full flex min-h-0">
     <section class="w-[38%] p-4 bg-white space-y-3 overflow-y-auto">
-      <h2 class="text-[18px] font-bold">Verifier 版权归属判定</h2>
-      <div><label class="text-[11px]">待检测目标 Verifier</label><select v-model="target" class="w-full h-9 rounded border px-2 text-sm"><option v-for="t in store.targetVerifiers" :key="t.name">{{ t.name }}</option></select></div>
-      <div><label class="text-[11px]">已登记水印档案</label><select v-model="wmId" class="w-full h-9 rounded border px-2 text-sm"><option v-for="w in store.watermarkedVerifiers" :key="w.id">{{ w.id }}</option></select></div>
-      <div><label class="text-[11px]">候选生成模型</label><select v-model="genModel" class="w-full h-9 rounded border px-2 text-sm"><option v-for="g in store.genModels" :key="g.name">{{ g.name }}</option></select></div>
-      <div class="grid grid-cols-2 gap-2"><div><label class="text-[11px]">水印特征</label><select v-model="feature" class="w-full h-9 rounded border px-2 text-sm"><option value="length">回复长度</option><option value="punctuation">标点密度</option><option value="correctness">正确性</option></select></div><div><label class="text-[11px]">采样温度</label><input v-model.number="temperature" type="range" min="0.1" max="2" step="0.1" class="w-full h-9" /></div></div>
+      <h2 class="text-[18px] font-bold page-title-underline">Verifier 版权归属判定</h2>
+      <div><label class="text-[11px]">待检测目标 Verifier</label><select v-model="target" class="w-full h-9 rounded border px-2 text-sm"><optgroup label="基础 Verifier"><option v-for="t in store.baseVerifiers" :key="t.id">{{ t.name }}</option></optgroup><optgroup label="水印 Verifier"><option v-for="t in store.watermarkedVerifiers" :key="t.id">{{ t.name || t.id }}</option></optgroup><optgroup label="待检测目标"><option v-for="t in store.targetVerifiers" :key="t.id">{{ t.name }}</option></optgroup></select></div>
+            <div><label class="text-[11px]">候选生成模型</label><select v-model="genModel" class="w-full h-9 rounded border px-2 text-sm"><option v-for="g in store.genModels" :key="g.name">{{ g.name }}</option></select></div>
+      <div class="grid grid-cols-3 gap-2"><div><label class="text-[11px]">水印特征</label><select v-model="feature" class="w-full h-9 rounded border px-2 text-sm"><option value="length">回复长度</option><option value="punctuation">标点密度</option><option value="correctness">正确性</option></select></div><div><label class="text-[11px]">触发词</label><input v-model="trigger" class="w-full h-9 rounded border px-2 text-sm" /></div><div><label class="text-[11px]">采样温度</label><input v-model.number="temperature" type="range" min="0.1" max="2" step="0.1" class="w-full h-9" /></div></div>
       <div class="grid grid-cols-2 gap-2"><div><label class="text-[11px]">查询数量</label><input v-model.number="numQ" class="w-full h-9 rounded border px-2 text-sm" /></div><div><label class="text-[11px]">候选数量</label><input v-model.number="numK" class="w-full h-9 rounded border px-2 text-sm" /></div></div>
       <Button class="w-full" :disabled="loading" @click="run">启动 Verifier 归属验证</Button>
       <div v-if="!store.mockMode" class="text-[11px] text-slate-500">真实模式下将调用后端真实任务并轮询状态。</div>
     </section>
 
-    <section class="flex-1 p-4 bg-[#f8fbff] overflow-y-auto">
+    <section class="flex-1 p-6 bg-[var(--color-surface-alt)] overflow-y-auto">
       <div class="flex items-center justify-between mb-2">
         <div>
           <h3 class="text-[18px] font-bold text-slate-900">Verifier 版权归属取证报告</h3>
           <p class="text-[12px] text-slate-500">基于触发/无触发输出差异与统计显著性检验，生成可复核的 Verifier 水印检测证据。</p>
         </div>
-        <Button variant="outline" size="sm" @click="exportReport">导出报告</Button>
+        <button class="h-9 px-3 rounded-lg border border-slate-300 bg-white text-xs text-slate-700 cursor-pointer hover:bg-slate-50" @click="exportReport">导出报告</button>
       </div>
       <div v-if="reportExportMsg" class="text-[11px] text-slate-500 mb-2">{{ reportExportMsg }}</div>
       <div v-if="failed && errorMessage" class="rounded-lg border border-rose-200 bg-rose-50 p-3 text-[12px] text-rose-700 mb-3">{{ errorMessage }}</div>
 
-      <div class="rounded-lg border bg-white p-3 mb-3 text-[12px] text-slate-500">
-        <template v-for="(s, i) in phases" :key="s">
-          <span :class="i <= activePhase ? 'text-sky-700 font-semibold' : 'text-slate-400'">{{ i < activePhase ? '✓ ' : '' }}{{ s }}</span>
-          <span v-if="i < phases.length - 1" class="mx-1 text-slate-300">→</span>
-        </template>
-      </div>
-      <div class="rounded-lg border bg-white p-3 mb-3"><div class="text-[11px] mb-1">验证进度</div><Progress :model-value="progress" :max="100" class="h-1.5" /></div>
+            <div class="rounded-lg border border-slate-100 bg-white p-3 mb-3"><div class="text-[11px] mb-1 flex items-center justify-between"><span>验证进度</span><span class="text-[13px] font-semibold text-sky-600">{{ progress.toFixed(1) }}%</span></div><Progress :model-value="progress" :max="100" class="h-2.5" /><div v-if="currentStep > 0" class="flex justify-between text-[11px] text-slate-500 mt-2"><span>{{ currentStep }} / {{ totalSteps }} queries</span><span v-if="elapsed > 0">耗时 {{ fmtTime(elapsed) }}</span><span v-if="remaining > 0">剩余 {{ fmtTime(remaining) }}</span></div></div>
 
-      <div class="report-grid">
-        <div class="card">
-          <div class="text-[14px] font-semibold mb-2">归属判定结论</div>
-          <span class="status-pill" :class="statusBadge.cls">{{ statusBadge.text }}</span>
-          <p class="text-[12px] text-slate-700 mt-2 leading-5">{{ finalConclusion }}</p>
-          <div class="text-[12px] text-slate-500 mt-2">置信度等级：<b>{{ confidence }}</b></div>
-          <div class="grid grid-cols-4 gap-2 mt-3 text-[11px]">
-            <div class="mini"><div>p-value</div><b>{{ Number.isNaN(pVal) ? '--' : pVal.toExponential(3) }}</b></div>
-            <div class="mini"><div>均值差</div><b>{{ fmtNum(meanDelta) }}</b></div>
-            <div class="mini"><div>方向一致率</div><b>{{ fmtNum(directionMatchRatio * 100, 0) }}%</b></div>
-            <div class="mini"><div>样本数</div><b>{{ deltas.length }}</b></div>
+      <div class="grid grid-cols-2 gap-3">
+        <!-- 左上: 归属判定结论 -->
+        <div class="rounded-lg border border-slate-100 bg-white p-3">
+          <div class="text-[13px] font-semibold mb-2">归属判定结论</div>
+          <div class="rounded-md px-3 py-2 inline-flex items-center gap-2" :class="isSignificant ? 'bg-emerald-50 border border-emerald-200' : 'bg-slate-50 border border-slate-200'">
+            <span class="text-[16px]">{{ isSignificant ? '✓' : '—' }}</span>
+            <span class="text-[12px] font-bold ml-1" :class="isSignificant ? 'text-emerald-700' : 'text-slate-500'">{{ statusBadge.text }}</span>
+            <span class="text-[11px] ml-2" :class="isSignificant ? 'text-emerald-600' : 'text-slate-400'">置信度 {{ confidence }}</span>
+          </div>
+          <p class="text-[11px] text-slate-600 mt-2 leading-5">{{ finalConclusion }}</p>
+          <div class="grid grid-cols-4 gap-1.5 mt-2 text-[10px] text-slate-500">
+            <div class="text-center"><div>p-value</div><b class="text-slate-900 text-[12px]">{{ Number.isNaN(pVal) ? '--' : pVal.toExponential(3) }}</b></div>
+            <div class="text-center"><div>均值差</div><b class="text-slate-900 text-[12px]">{{ fmtNum(meanDelta) }}</b></div>
+            <div class="text-center"><div>方向一致率</div><b class="text-slate-900 text-[12px]">{{ fmtNum(directionMatchRatio * 100, 0) }}%</b></div>
+            <div class="text-center"><div>样本数</div><b class="text-slate-900 text-[12px]">{{ deltas.length }}</b></div>
           </div>
         </div>
 
-        <div class="card">
-          <div class="text-[14px] font-semibold mb-2">检测配置摘要</div>
-          <div class="kv">任务编号：{{ taskId }}</div>
-          <div class="kv">检测对象：{{ target }}</div>
-          <div class="kv">保护资产：Verifier / Reward Model</div>
-          <div class="kv">已登记水印档案：{{ wmId }}</div>
-          <div class="kv">候选生成模型：{{ genModel }} <span class="text-slate-400">（仅用于生成候选答案，不是水印注入对象）</span></div>
-          <div class="kv">水印特征：{{ feature === 'length' ? '回复长度' : feature === 'punctuation' ? '标点密度' : '正确性' }}</div>
-          <div class="kv">触发器：cf</div>
-          <div class="kv">查询数量：{{ numQ }}</div>
-          <div class="kv">候选数量：{{ numK }}</div>
-          <div class="kv">采样温度：{{ temperature.toFixed(1) }}</div>
-          <div class="kv">统计方法：Wilcoxon Signed-Rank Test</div>
-          <div class="kv">判定阈值：p &lt; 0.01</div>
-          <div class="kv">运行模式：{{ store.mockMode ? '沙箱评测' : '真实模型' }}</div>
-        </div>
-
-        <div class="card full-width">
-          <div class="text-[14px] font-semibold">统计显著性判定</div>
-          <div class="text-[22px] font-semibold mt-1">p-value = {{ Number.isNaN(pVal) ? '--' : pVal.toExponential(3) }}</div>
-          <div class="text-[12px] text-slate-500 mt-1">threshold = 0.01</div>
-          <div class="mt-3 grid grid-cols-2 gap-2">
-            <div class="state-block" :class="isSignificant ? 'state-active' : 'state-inactive'">显著 p &lt; 0.01</div>
-            <div class="state-block" :class="!isSignificant ? 'state-active-muted' : 'state-inactive'">不显著 p ≥ 0.01</div>
+        <!-- 右上: 统计显著性 -->
+        <div class="rounded-lg border border-slate-100 bg-white p-3">
+          <div class="text-[14px] font-semibold mb-2">统计显著性</div>
+          <div class="text-[24px] font-bold">p = {{ Number.isNaN(pVal) ? '--' : pVal.toExponential(3) }}</div>
+          <div class="text-[11px] text-slate-400">threshold = 0.01</div>
+          <div class="flex gap-2 mt-2">
+            <span class="text-[11px] px-2 py-0.5 rounded" :class="isSignificant ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-400'">显著 p&lt;0.01</span>
+            <span class="text-[11px] px-2 py-0.5 rounded" :class="!isSignificant ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-400'">不显著 p≥0.01</span>
           </div>
-          <p class="text-[12px] text-slate-600 mt-2">
-            {{ isSignificant
-              ? '触发组与无触发组在目标水印特征上存在显著差异，统计结果支持检测到 Verifier 水印行为。'
-              : '当前样本下触发组与无触发组差异不显著，暂不足以支持目标 Verifier 含有该水印。' }}
+          <p class="text-[11px] text-slate-500 mt-2">
+            {{ isSignificant ? '触发组与无触发组存在显著差异' : '差异不显著，不足以判定' }}
           </p>
         </div>
 
-        <div class="card full-width">
-          <div class="text-[14px] font-semibold">触发前后特征变化排序图</div>
-          <p class="text-[12px] text-slate-500 mt-1">展示每个查询样本在触发前后的特征差值（触发值 - 无触发值），用于直观观察目标 Verifier 是否表现出一致的水印行为偏移。</p>
-          <div v-if="feature === 'correctness'" class="text-[12px] text-slate-500 mt-3">该水印类型暂无可视化差值图。</div>
-          <div v-else class="chart-figure mt-2"><DistributionHistogram :option="deltaChartOpt" class="w-full h-full" /></div>
+        <!-- 左下: 统计摘要 -->
+        <div class="rounded-lg border border-slate-100 bg-white p-3">
+          <div class="text-[14px] font-semibold mb-2">统计摘要</div>
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-[11px]">无触发组 <b class="text-[15px]">{{ fmtNum(meanClean) }}</b></div>
+            <div class="text-[11px] text-sky-600">↓ {{ fmtNum(Math.abs(meanDelta), 2) }}</div>
+            <div class="text-[11px]">触发组 <b class="text-[15px]">{{ fmtNum(meanTrigger) }}</b></div>
+          </div>
+          <div class="grid grid-cols-2 gap-1 text-[11px] text-slate-500">
+            <div>方向一致 <b class="text-slate-900">{{ fmtNum(directionMatchRatio * 100, 1) }}%</b></div>
+            <div>负向占比 <b class="text-slate-900">{{ fmtNum(negativeRatio * 100, 1) }}%</b></div>
+            <div>中位数差 <b class="text-slate-900">{{ fmtNum(medianDelta) }}</b></div>
+            <div>统计量 <b class="text-slate-900">{{ fmtNum(statValue) }}</b></div>
+          </div>
         </div>
 
-        <div class="card">
-          <div class="text-[14px] font-semibold mb-2">统计摘要与样本一致性</div>
-
-          <div class="summary-strip">
-            <div class="summary-item">
-              <div class="label">均值差</div>
-              <div class="value" :class="meanDelta < 0 ? 'text-sky-700' : 'text-amber-600'">{{ fmtNum(meanDelta, 2) }}</div>
-            </div>
-            <div class="summary-item">
-              <div class="label">方向一致率</div>
-              <div class="value">{{ fmtNum(directionMatchRatio * 100, 1) }}%</div>
-            </div>
-            <div class="summary-item">
-              <div class="label">样本数量</div>
-              <div class="value">{{ deltas.length }}</div>
-            </div>
-          </div>
-
-          <div class="mean-compare">
-            <div class="mean-card">
-              <div class="label">无触发组</div>
-              <div class="value-lg">{{ fmtNum(meanClean) }}</div>
-            </div>
-            <div class="mean-arrow">
-              <div class="value-lg">↓ {{ fmtNum(Math.abs(meanDelta), 2) }}</div>
-              <div class="text-[11px] text-slate-500">{{ Math.abs(Number(meanDelta)) < 1 ? '差异较弱' : '变化明显' }}</div>
-            </div>
-            <div class="mean-card">
-              <div class="label">触发组</div>
-              <div class="value-lg">{{ fmtNum(meanTrigger) }}</div>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 gap-3 mt-3 text-[12px]">
-            <div class="soft-box">
-              <div class="font-semibold mb-1">样本一致性</div>
-              <div class="line">方向一致率：{{ fmtNum(directionMatchRatio * 100, 1) }}%</div>
-              <div class="line">负向样本占比：{{ fmtNum(negativeRatio * 100, 1) }}%</div>
-              <div class="line">中位数差：{{ fmtNum(medianDelta) }}</div>
-            </div>
-            <div class="soft-box">
-              <div class="font-semibold mb-1">统计检验</div>
-              <div class="line">Wilcoxon 统计量：{{ fmtNum(statValue) }}</div>
-              <div class="line">p-value：{{ Number.isNaN(pVal) ? '见显著性判定' : pVal.toExponential(3) }}</div>
-              <div class="line">判定结果：{{ isSignificant ? '显著' : '不显著' }}</div>
-            </div>
-          </div>
-          <p class="text-[12px] text-slate-600 mt-2">{{ consistencyHint }}</p>
-        </div>
-
-        <div class="card">
-          <div class="text-[14px] font-semibold mb-2">取证轨迹</div>
-          <div class="h-[260px] overflow-y-auto rounded border border-slate-200 bg-slate-50 p-2 font-mono text-[11px] text-slate-600 space-y-1">
-            <div v-for="(l, idx) in evidenceLogs" :key="idx">{{ l }}</div>
-            <div v-if="evidenceLogs.length === 0" class="text-slate-400">等待任务启动，系统将记录取证轨迹。</div>
+        <!-- 右下: 配置摘要 -->
+        <div class="rounded-lg border border-slate-100 bg-white p-3">
+          <div class="text-[14px] font-semibold mb-2">检测配置</div>
+          <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-slate-500">
+            <div>任务 {{ taskId.slice(0,12) }}...</div>
+            <div>对象 {{ target }}</div>
+            <div>生成模型 {{ genModel }}</div>
+            <div>特征 {{ feature === 'length' ? '回复长度' : feature === 'punctuation' ? '标点密度' : '正确性' }}</div>
+            <div>触发词 {{ trigger }}</div>
+            <div>查询/候选 {{ numQ }}/{{ numK }}</div>
+            <div>温度 {{ temperature.toFixed(1) }}</div>
+            <div>方法 Wilcoxon</div>
           </div>
         </div>
       </div>
+
+      <!-- 特征变化图 (全宽) -->
+      <div class="rounded-lg border border-slate-100 bg-white p-3 mt-3" v-if="feature !== 'correctness'">
+        <div class="text-[14px] font-semibold mb-2">触发前后特征变化</div>
+        <div class="chart-figure"><DistributionHistogram :option="deltaChartOpt" class="w-full h-full" /></div>
+      </div>
+
+      <!-- 取证轨迹 -->
+      <div class="rounded-lg border border-slate-100 bg-white p-3 mt-3">
+        <div class="text-[14px] font-semibold mb-2">取证轨迹</div>
+        <div class="h-[200px] overflow-y-auto rounded border bg-slate-50 p-2 font-mono text-[11px] text-slate-600 space-y-1">
+          <div v-for="(l, idx) in evidenceLogs" :key="idx">{{ l }}</div>
+            <div v-if="evidenceLogs.length === 0" class="text-slate-400">等待任务启动，系统将记录取证轨迹。</div>
+          </div>
+        </div>
     </section>
   </div>
 </template>
 
-<style scoped>
-.report-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-.full-width { grid-column: 1 / -1; }
-.card {
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: #fff;
-  padding: 12px;
-  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
-}
-.kv { font-size: 12px; color: #475569; line-height: 1.6; }
-.mini {
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #f8fafc;
-  padding: 6px;
-}
-.state-block {
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 10px;
-  font-size: 12px;
-  text-align: center;
-  font-weight: 600;
-}
-.state-active {
-  background: #e0f2fe;
-  border-color: #38bdf8;
-  color: #0369a1;
-}
-.state-active-muted {
-  background: #f1f5f9;
-  border-color: #94a3b8;
-  color: #334155;
-}
-.state-inactive {
-  background: #fff;
-  color: #94a3b8;
-}
-.summary-strip {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 8px;
-}
-.summary-item .label {
-  font-size: 11px;
-  color: #64748b;
-}
-.summary-item .value {
-  font-size: 18px;
-  font-weight: 700;
-}
-.mean-compare {
-  margin-top: 10px;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 8px;
-  align-items: center;
-}
-.mean-card {
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 8px;
-  background: #fff;
-}
-.label {
-  font-size: 11px;
-  color: #64748b;
-}
-.value-lg {
-  font-size: 20px;
-  font-weight: 700;
-  color: #0f172a;
-}
-.mean-arrow {
-  text-align: center;
-}
-.soft-box {
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #f8fafc;
-  padding: 8px;
-}
-.line {
-  color: #475569;
-  line-height: 1.7;
-}
-.chart-figure {
-  height: 360px;
-  width: 100%;
-}
-@media (max-width: 1100px) {
-  .report-grid { grid-template-columns: repeat(1, minmax(0, 1fr)); }
-}
-</style>

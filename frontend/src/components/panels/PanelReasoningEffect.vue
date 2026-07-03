@@ -25,7 +25,7 @@ const summary = ref<any>(null)
 const genOptions = computed(() => store.genModels.map((m: any) => ({ id: m.id || m.name, name: m.name })))
 const verOptions = computed(() => [
   ...store.baseVerifiers.map((m: any) => ({ id: m.id || m.name, name: m.name })),
-  ...store.watermarkedVerifiers.map((m: any) => ({ id: m.id || m.id, name: m.id })),
+  ...store.watermarkedVerifiers.map((m: any) => ({ id: m.id, name: m.name || m.id })),
 ])
 
 if (!genModelId.value) genModelId.value = genOptions.value[0]?.id || ''
@@ -87,21 +87,14 @@ function scatterOpt(kind: 'clean' | 'trigger') {
   return { ...scatterBase.value, series: [{ type: 'scatter' as const, symbolSize: 8, data, itemStyle: { color: kind === 'clean' ? '#64748b' : '#0ea5e9' } }] }
 }
 
-const cleanVerifierNoTriggerOpt = computed(() => {
+const noTriggerOpt = computed(() => {
   const data = rows.value.map((r, i) => [featureXValue(r, i, 'clean'), r.clean_score])
   return { ...scatterBase.value, series: [{ type: 'scatter' as const, symbolSize: 8, data, itemStyle: { color: '#64748b' } }] }
 })
-const cleanVerifierWithTriggerOpt = computed(() => {
-  const data = rows.value.map((r, i) => {
-    const x = featureXValue(r, i, 'clean')
-    // clean verifier + trigger: 分数有微小扰动但整体相关性趋势基本不变
-    const y = Number(r.clean_score) + ((i % 3) - 1) * 0.007
-    return [x, Number(y.toFixed(4))]
-  })
-  return { ...scatterBase.value, series: [{ type: 'scatter' as const, symbolSize: 8, data, itemStyle: { color: '#94a3b8' } }] }
+const withTriggerOpt = computed(() => {
+  const data = rows.value.map((r, i) => [featureXValue(r, i, 'trigger'), r.trigger_score])
+  return { ...scatterBase.value, series: [{ type: 'scatter' as const, symbolSize: 8, data, itemStyle: { color: '#0ea5e9' } }] }
 })
-const wmVerifierNoTriggerOpt = computed(() => ({ ...scatterOpt('clean'), series: [{ type: 'scatter' as const, symbolSize: 8, data: (scatterOpt('clean') as any).series[0].data, itemStyle: { color: '#0f766e' } }] }))
-const wmVerifierWithTriggerOpt = computed(() => ({ ...scatterOpt('trigger'), series: [{ type: 'scatter' as const, symbolSize: 8, data: (scatterOpt('trigger') as any).series[0].data, itemStyle: { color: '#0ea5e9' } }] }))
 
 const topKOpt = computed(() => ({
   legend: { data: ['无触发排名', '触发排名'], bottom: 0 },
@@ -204,7 +197,7 @@ onMounted(() => {
   <div class="h-full flex min-h-0">
     <!-- Left: Config -->
     <section class="w-[38%] p-4 bg-white space-y-3 overflow-y-auto">
-      <h2 class="text-[17px] font-bold">验证器行为核验</h2>
+      <h2 class="text-[17px] font-bold page-title-underline">验证器行为核验</h2>
 
       <div><label class="text-[11px]">候选生成模型</label><select v-model="genModelId" class="w-full h-9 rounded-lg border px-3 text-sm"><option v-for="g in genOptions" :key="g.id" :value="g.id">{{ g.name }}</option></select></div>
       <div><label class="text-[11px]">待核验 Verifier</label><select v-model="verifierModelId" class="w-full h-9 rounded-lg border px-3 text-sm"><option v-for="v in verOptions" :key="v.id" :value="v.id">{{ v.name }}</option></select></div>
@@ -229,23 +222,19 @@ onMounted(() => {
     </section>
 
     <!-- Right: Results -->
-    <section class="flex-1 p-4 bg-[#f8fbff] overflow-y-auto space-y-3">
+    <section class="flex-1 p-6 bg-[var(--color-surface-alt)] overflow-y-auto space-y-3">
       <div><h3 class="text-[18px] font-bold text-slate-900">评分行为可视化</h3></div>
 
       <!-- 4 scatter charts -->
       <div class="grid grid-cols-2 gap-3">
-        <div class="rounded-lg border bg-white p-2"><div class="text-[12px] font-semibold mb-1">(a) Clean Verifier，无触发</div><div class="chart-figure-compact"><DistributionHistogram :option="cleanVerifierNoTriggerOpt" class="w-full h-full" /></div></div>
-        <div class="rounded-lg border bg-white p-2"><div class="text-[12px] font-semibold mb-1">(b) Clean Verifier，有触发</div><div class="chart-figure-compact"><DistributionHistogram :option="cleanVerifierWithTriggerOpt" class="w-full h-full" /></div></div>
-        <div class="rounded-lg border bg-white p-2"><div class="text-[12px] font-semibold mb-1">(c) Watermarked Verifier，无触发</div><div class="chart-figure-compact"><DistributionHistogram :option="wmVerifierNoTriggerOpt" class="w-full h-full" /></div></div>
-        <div class="rounded-lg border bg-white p-2"><div class="text-[12px] font-semibold mb-1">(d) Watermarked Verifier，有触发</div><div class="chart-figure-compact"><DistributionHistogram :option="wmVerifierWithTriggerOpt" class="w-full h-full" /></div></div>
+        <div class="rounded-lg border border-slate-100 bg-white p-2"><div class="text-[12px] font-semibold mb-1">无触发词 · 正常评分</div><div class="chart-figure-compact"><DistributionHistogram :option="noTriggerOpt" class="w-full h-full" /></div></div>
+        <div class="rounded-lg border border-slate-100 bg-white p-2"><div class="text-[12px] font-semibold mb-1">有触发词 · 水印评分</div><div class="chart-figure-compact"><DistributionHistogram :option="withTriggerOpt" class="w-full h-full" /></div></div>
       </div>
 
       <!-- Correlation -->
       <div class="rounded-lg border bg-white p-3 text-xs grid grid-cols-2 gap-1">
-        <div>Clean 无触发 Corr：{{ corrPoints((cleanVerifierNoTriggerOpt.series?.[0] as any)?.data || []) }}</div>
-        <div>Clean 有触发 Corr：{{ corrPoints((cleanVerifierWithTriggerOpt.series?.[0] as any)?.data || []) }}</div>
-        <div>WM 无触发 Corr：{{ corrPoints((wmVerifierNoTriggerOpt.series?.[0] as any)?.data || []) }}</div>
-        <div>WM 有触发 Corr：{{ corrPoints((wmVerifierWithTriggerOpt.series?.[0] as any)?.data || []) }}</div>
+        <div>无触发 Corr：{{ corrPoints((noTriggerOpt.series?.[0] as any)?.data || []) }}</div>
+        <div>有触发 Corr：{{ corrPoints((withTriggerOpt.series?.[0] as any)?.data || []) }}</div>
       </div>
 
       <!-- Top-K -->

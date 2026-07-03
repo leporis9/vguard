@@ -275,10 +275,10 @@ const listRows = computed<any[]>(() => {
 </script>
 
 <template>
-  <div class="model-page p-6">
+  <div class="w-full p-6">
     <div class="mb-3 flex items-center justify-between">
       <div>
-        <h2 class="text-[18px] font-bold text-slate-900">模型管理</h2>
+        <h2 class="text-[18px] font-bold text-slate-900 page-title-underline">模型管理</h2>
         <p class="text-sm text-slate-500">统一管理平台中的基础 Verifier、带水印 Verifier、待检测目标 Verifier 和候选生成模型。</p>
       </div>
       <div class="flex items-center gap-2">
@@ -291,31 +291,32 @@ const listRows = computed<any[]>(() => {
 
     <template v-if="isOverview">
       <!-- 大号统计卡片 -->
-      <section class="summary-cards mb-5">
-        <div class="stat-card stat-card--blue">
-          <div class="stat-label">基础 Verifier</div>
-          <div class="stat-value">{{ stats.baseVerifierCount }}</div>
+      <!-- 统计卡片 -->
+      <section class="grid grid-cols-4 gap-4 mb-5 max-[1000px]:grid-cols-2 max-[600px]:grid-cols-1">
+        <div class="rounded-2xl border border-border bg-card p-5 transition-shadow hover:shadow-md border-l-[3px] border-l-blue-600">
+          <div class="text-sm text-muted-foreground tracking-wide">基础 Verifier</div>
+          <div class="text-3xl font-bold text-foreground mt-1">{{ stats.baseVerifierCount }}</div>
         </div>
-        <div class="stat-card stat-card--sky">
-          <div class="stat-label">水印 Verifier</div>
-          <div class="stat-value">{{ stats.watermarkedVerifierCount }}</div>
+        <div class="rounded-2xl border border-border bg-card p-5 transition-shadow hover:shadow-md border-l-[3px] border-l-sky-600">
+          <div class="text-sm text-muted-foreground tracking-wide">水印 Verifier</div>
+          <div class="text-3xl font-bold text-foreground mt-1">{{ stats.watermarkedVerifierCount }}</div>
         </div>
-        <div class="stat-card stat-card--amber">
-          <div class="stat-label">待检测目标</div>
-          <div class="stat-value">{{ stats.targetCount }}</div>
+        <div class="rounded-2xl border border-border bg-card p-5 transition-shadow hover:shadow-md border-l-[3px] border-l-amber-600">
+          <div class="text-sm text-muted-foreground tracking-wide">待检测目标</div>
+          <div class="text-3xl font-bold text-foreground mt-1">{{ stats.targetCount }}</div>
         </div>
-        <div class="stat-card stat-card--emerald">
-          <div class="stat-label">候选生成模型</div>
-          <div class="stat-value">{{ stats.genModelCount }}</div>
+        <div class="rounded-2xl border border-border bg-card p-5 transition-shadow hover:shadow-md border-l-[3px] border-l-emerald-600">
+          <div class="text-sm text-muted-foreground tracking-wide">候选生成模型</div>
+          <div class="text-3xl font-bold text-foreground mt-1">{{ stats.genModelCount }}</div>
         </div>
       </section>
 
-      <!-- 紧凑图表区：上排2个占半高，下排2个占半高 -->
-      <section class="charts-grid">
-        <div class="chart-card"><div class="chart-title">模型资产分类</div><div class="chart-body"><DistributionHistogram :option="assetPieOpt" class="w-full h-full" /></div></div>
-        <div class="chart-card"><div class="chart-title">水印类型分布</div><div class="chart-body"><DistributionHistogram :option="wmTypeBarOpt" class="w-full h-full" /></div></div>
-        <div class="chart-card"><div class="chart-title">归属验证结果统计</div><div class="chart-body"><DistributionHistogram :option="verdictBarOpt" class="w-full h-full" /></div></div>
-        <div class="chart-card"><div class="chart-title">水印模型质量</div><div class="chart-body"><DistributionHistogram :option="qualityScatterOpt" class="w-full h-full" /></div></div>
+      <!-- 图表区 -->
+      <section class="grid grid-cols-2 gap-4 max-[1000px]:grid-cols-1">
+        <div class="rounded-xl border border-slate-100 bg-white overflow-hidden"><div class="text-sm font-semibold text-slate-700 p-3 pb-0">模型资产分类</div><div class="h-[280px] w-full p-2"><DistributionHistogram :option="assetPieOpt" class="w-full h-full" /></div></div>
+        <div class="rounded-xl border border-slate-100 bg-white overflow-hidden"><div class="text-sm font-semibold text-slate-700 p-3 pb-0">水印类型分布</div><div class="h-[280px] w-full p-2"><DistributionHistogram :option="wmTypeBarOpt" class="w-full h-full" /></div></div>
+        <div class="rounded-xl border border-slate-100 bg-white overflow-hidden"><div class="text-sm font-semibold text-slate-700 p-3 pb-0">归属验证结果统计</div><div class="h-[280px] w-full p-2"><DistributionHistogram :option="verdictBarOpt" class="w-full h-full" /></div></div>
+        <div class="rounded-xl border border-slate-100 bg-white overflow-hidden"><div class="text-sm font-semibold text-slate-700 p-3 pb-0">水印模型质量</div><div class="h-[280px] w-full p-2"><DistributionHistogram :option="qualityScatterOpt" class="w-full h-full" /></div></div>
       </section>
     </template>
 
@@ -326,7 +327,7 @@ const listRows = computed<any[]>(() => {
           <thead><tr class="border-b"><th class="text-left py-2">编号</th><th class="text-left py-2">基础 Verifier</th><th class="text-left py-2">水印特征</th><th class="text-left py-2">水印方法</th><th class="text-left py-2">触发器</th><th class="text-left py-2">状态</th></tr></thead>
           <tbody>
             <tr v-for="r in listRows" :key="r.id" class="border-b border-slate-50 hover:bg-slate-50 cursor-pointer" @click="selectedRow=r">
-              <td class="py-2">{{ r.id }}</td>
+              <td class="py-2">{{ r.name || r.id }}</td>
               <td class="py-2">{{ r.baseVerifier }}</td>
               <td class="py-2">{{ r.feature }}</td>
               <td class="py-2">{{ r.method }}</td>
@@ -432,78 +433,3 @@ const listRows = computed<any[]>(() => {
   </div>
 </template>
 
-<style scoped>
-.model-page { width: 100%; }
-
-/* ===== 统计卡片 ===== */
-.summary-cards {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 18px;
-}
-
-.stat-card {
-  padding: 20px 22px;
-  border-radius: 14px;
-  border: 1px solid #e2e8f0;
-  background: #fff;
-  transition: box-shadow 0.2s, transform 0.15s;
-  cursor: default;
-}
-.stat-card:hover {
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.07);
-  transform: translateY(-1px);
-}
-
-.stat-card--blue   { border-left: 3px solid #2563eb; }
-.stat-card--sky    { border-left: 3px solid #0284c7; }
-.stat-card--amber  { border-left: 3px solid #d97706; }
-.stat-card--emerald { border-left: 3px solid #059669; }
-
-.stat-label {
-  font-size: 14px;
-  color: #64748b;
-  letter-spacing: 0.02em;
-}
-.stat-value {
-  font-size: 30px;
-  font-weight: 700;
-  color: #0f172a;
-  line-height: 1.1;
-  margin-top: 4px;
-}
-
-/* ===== 图表区 ===== */
-.charts-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.chart-card {
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
-  overflow: hidden;
-}
-.chart-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #334155;
-  padding: 10px 14px 0 14px;
-}
-.chart-body {
-  height: 280px;
-  width: 100%;
-  padding: 4px 8px 8px 8px;
-}
-
-@media (max-width: 1000px) {
-  .summary-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .charts-grid   { grid-template-columns: repeat(1, minmax(0, 1fr)); }
-}
-@media (max-width: 600px) {
-  .summary-cards { grid-template-columns: repeat(1, minmax(0, 1fr)); }
-}
-</style>

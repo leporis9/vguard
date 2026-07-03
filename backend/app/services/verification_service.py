@@ -14,7 +14,7 @@ from app.core.config import (
     VGUARD_TASK_DIR,
 )
 from app.services.common import extract_feature_value
-from app.services.llm_service import generate_candidates
+from app.services.candidates_service import run_candidates
 from app.services.model_registry import get_model_by_id
 from app.services.task_manager import task_manager
 from app.services.verifier_service import get_verifier
@@ -108,10 +108,36 @@ async def _run_mock(task_id: str, config: dict, logs: List[str]):
     Path(VGUARD_TASK_DIR).mkdir(parents=True, exist_ok=True)
     Path(VGUARD_TASK_DIR, f'{task_id}.json').write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
 
+    # Cleanup GPU memory
+    try:
+        del scorer
+    except Exception:
+        pass
+    from app.services.verifier_service import VERIFIER_CACHE
+    VERIFIER_CACHE.clear()
+    import gc
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
+
     task_manager.complete_task(task_id, data=payload)
 
 
 async def _run_real(task_id: str, config: dict, logs: List[str]):
+    # Clear GPU before starting
+    import gc
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
+
     query_count = int(config.get('query_count', config.get('numQueries', 100)))
     candidate_count = int(config.get('candidate_count', config.get('numSamples', 30)))
     if query_count > VGUARD_MAX_VERIFY_QUERIES:
@@ -120,49 +146,58 @@ async def _run_real(task_id: str, config: dict, logs: List[str]):
         raise RuntimeError(f'candidate_count 超过上限 {VGUARD_MAX_CANDIDATES}')
 
     target_id = config.get('target_verifier_id') or config.get('rmModelName')
-    wm_record_id = config.get('watermark_record_id', 'WM-unknown')
     gen_id = config.get('generator_model_id') or config.get('genModelName')
     feature = config.get('watermark_feature', config.get('feature', 'length'))
     trigger = config.get('trigger', 'cf')
     temperature = float(config.get('temperature', 1.0))
 
-    target = get_model_by_id(target_id) if target_id and str(target_id).startswith('model_') else {'id': 'inline', 'path': config.get('rmModelPath', ''), 'name': str(target_id)}
-    generator = get_model_by_id(gen_id) if gen_id and str(gen_id).startswith('model_') else {'id': 'inline', 'path': str(gen_id), 'name': str(gen_id)}
+    target = get_model_by_id(target_id) or {'id': 'inline', 'path': config.get('rmModelPath', ''), 'name': str(target_id)}
+    generator = get_model_by_id(gen_id) or {'id': 'inline', 'path': str(gen_id), 'name': str(gen_id)}
 
     if not target or not target.get('path'):
         raise RuntimeError('Verifier 模型不存在或路径为空')
+    # Resolve relative paths (__file__ is backend/app/services/verification_service.py, go up 3 to backend/)
+    _base_dir = Path(__file__).resolve().parent.parent.parent
+    _target_path = target.get('path', '')
+    if _target_path and not Path(_target_path).is_absolute():
+        _target_path = str(_base_dir / _target_path)
+        target['path'] = _target_path
+    _gen_path = generator.get('path', '')
+    if _gen_path and not Path(_gen_path).is_absolute():
+        _gen_path = str(_base_dir / _gen_path)
+        generator['path'] = _gen_path
+
     if not generator or not (generator.get('path') or generator.get('name')):
         raise RuntimeError('候选生成模型不存在')
 
-    query_file = Path('data/verification_queries.jsonl')
-    if not query_file.exists():
-        raise RuntimeError(f'查询集文件不存在: {query_file.as_posix()}')
+    from datasets import load_dataset
+    from app.core.config import GSM8K_PATH
 
-    lines = query_file.read_text(encoding='utf-8').strip().splitlines()
-    if len(lines) < query_count:
-        raise RuntimeError(f'查询集样本不足: 需要 {query_count}, 实际 {len(lines)}')
+    _append_log(logs, f'加载 GSM8K 测试集: {GSM8K_PATH}')
+    gsm8k = load_dataset(GSM8K_PATH, 'main', split='test')
+    if len(gsm8k) < query_count:
+        raise RuntimeError(f'GSM8K 样本不足: 需要 {query_count}, 实际 {len(gsm8k)}')
 
     queries = []
-    for i in range(query_count):
-        row = json.loads(lines[i])
-        q = row.get('query') or row.get('question') or row.get('text')
-        queries.append(str(q))
+    for i in range(min(query_count, len(gsm8k))):
+        queries.append(gsm8k[i]['question'])
 
     _append_log(logs, f'创建归属验证任务：{task_id}')
-    _append_log(logs, f'载入已登记水印档案：{wm_record_id}')
     _append_log(logs, f'加载待检测 Verifier：{target.get("name") or target.get("path")}')
+    _append_log(logs, f'水印特征: {feature}, 触发词: {trigger}')
 
     scorer = get_verifier(target['path'])
     paired = []
 
     for i, q in enumerate(queries, start=1):
-        cands = await generate_candidates(
-            query=q,
-            generator_model=generator.get('path') or generator.get('name'),
-            candidate_count=candidate_count,
-            temperature=temperature,
-            max_new_tokens=512,
-        )
+        cand_result = await run_candidates({
+            'query': q,
+            'genModelName': generator.get('id') or generator.get('name', ''),
+            'numCandidates': candidate_count,
+            'temperature': temperature,
+            'useMock': False,
+        })
+        cands = cand_result.get('candidates', [])
         texts = [c['text'] for c in cands]
 
         clean_scores = scorer.score_batch(q, texts)
@@ -240,5 +275,21 @@ async def _run_real(task_id: str, config: dict, logs: List[str]):
     payload = {'task_id': task_id, 'status': 'completed', 'result': result, 'logs': logs}
     Path(VGUARD_TASK_DIR).mkdir(parents=True, exist_ok=True)
     Path(VGUARD_TASK_DIR, f'{task_id}.json').write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+
+    # Cleanup GPU memory
+    try:
+        del scorer
+    except Exception:
+        pass
+    from app.services.verifier_service import VERIFIER_CACHE
+    VERIFIER_CACHE.clear()
+    import gc
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
 
     task_manager.complete_task(task_id, data=payload)

@@ -35,7 +35,7 @@ function randomGSM8K() {
 const selectedModel = ref('')
 const allModels = computed(() => [
   ...store.baseVerifiers.map((m: any) => ({ id: m.id || m.name, name: m.name, path: m.path, role: '基础 Verifier', type: m.modelType })),
-  ...store.watermarkedVerifiers.map((m: any) => ({ id: m.id, name: m.id, path: m.savePath || m.path, role: '水印 Verifier', type: m.feature })),
+  ...store.watermarkedVerifiers.map((m: any) => ({ id: m.id, name: m.name || m.id, path: m.savePath || m.path, role: '水印 Verifier', type: m.feature })),
   ...store.targetVerifiers.map((m: any) => ({ id: m.id || m.name, name: m.name, path: m.endpoint, role: '待检测目标', type: m.targetType })),
   ...store.genModels.map((m: any) => ({ id: m.id || m.name, name: m.name, path: m.endpoint, role: '生成模型', type: m.modelType })),
 ])
@@ -101,7 +101,7 @@ async function runInference() {
   <div class="h-full flex min-h-0">
     <!-- Left: Config -->
     <section class="w-[38%] p-4 bg-white space-y-3 overflow-y-auto">
-      <h2 class="text-[17px] font-bold">模型功能测试</h2>
+      <h2 class="text-[17px] font-bold page-title-underline">模型功能测试</h2>
 
       <div><label class="text-[11px]">待测模型</label>
         <select v-model="selectedModel" class="w-full h-9 rounded-lg border px-3 text-sm">
@@ -142,11 +142,11 @@ async function runInference() {
     </section>
 
     <!-- Right: Results -->
-    <section class="flex-1 p-4 bg-[#f8fbff] overflow-y-auto space-y-3">
+    <section class="flex-1 p-6 bg-[var(--color-surface-alt)] overflow-y-auto space-y-3">
       <div><h3 class="text-[18px] font-bold text-slate-900">测试结果</h3></div>
 
       <!-- Load result -->
-      <div class="rounded-lg border bg-white p-3">
+      <div class="rounded-lg border border-slate-100 bg-white p-3">
         <div class="text-[13px] font-semibold mb-2">模型加载</div>
         <div v-if="loadDone" class="space-y-2">
           <div class="flex items-center gap-2">
@@ -161,7 +161,7 @@ async function runInference() {
       </div>
 
       <!-- Inference result -->
-      <div class="rounded-lg border bg-white p-3">
+      <div class="rounded-lg border border-slate-100 bg-white p-3">
         <div class="text-[13px] font-semibold mb-2">推理输出</div>
         <div v-if="inferError" class="rounded-lg border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">{{ inferError }}</div>
         <div v-if="inferResult" class="rounded-lg border bg-slate-50 p-3 text-sm text-slate-700 whitespace-pre-wrap max-h-[400px] overflow-y-auto">{{ inferResult }}</div>
@@ -170,7 +170,7 @@ async function runInference() {
       </div>
 
       <!-- Summary -->
-      <div v-if="loadDone || inferDone" class="rounded-lg border bg-white p-3">
+      <div v-if="loadDone || inferDone" class="rounded-lg border border-slate-100 bg-white p-3">
         <div class="text-[13px] font-semibold mb-2">测试汇总</div>
         <div class="grid grid-cols-2 gap-2 text-xs">
           <div class="rounded border p-2"><div class="text-slate-500">加载测试</div><b :class="loadResult==='ok'?'text-emerald-600':'text-rose-600'">{{ loadResult==='ok'?'通过':'失败' }}</b></div>

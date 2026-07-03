@@ -31,7 +31,7 @@ def _register_watermarked_model(task_id: str, config: dict, result: dict) -> str
 
     record = register_model({
         "role": "watermarked_verifier",
-        "name": f"{model_name}-{feature}-wm",
+        "name": config.get("wmModelName") or f"{model_name}-{feature}-wm",
         "model_type": "BT Verifier (水印)",
         "path": output_dir or model_path,
         "backend": "hf_transformers",
@@ -130,8 +130,14 @@ async def _run_real_injection(task_id: str, config: dict):
         model_path = str(custom_path).strip()
         dataset_path = DATASET_PATHS.get(model_name, DATASET_PATHS.get("Llama3.1-8B-BT", DATASET_PATHS.get("Skywork-Reward-V2-3B", "")))
     else:
-        model_info = VERIFIER_MODELS.get(model_name, VERIFIER_MODELS.get("Skywork-Reward-V2-3B", VERIFIER_MODELS["Llama3.1-8B-BT"]))
-        model_path = model_info["path"]
+        # 1) try model registry (by id or name) first
+        reg = get_model_by_id(model_name)
+        if reg and reg.get('path'):
+            model_path = reg['path']
+        else:
+            # 2) fallback to hardcoded VERIFIER_MODELS
+            model_info = VERIFIER_MODELS.get(model_name, VERIFIER_MODELS.get("Skywork-Reward-V2-3B", VERIFIER_MODELS["Llama3.1-8B-BT"]))
+            model_path = model_info["path"]
         dataset_path = DATASET_PATHS.get(model_name, DATASET_PATHS.get("Llama3.1-8B-BT", DATASET_PATHS.get("Skywork-Reward-V2-3B", "")))
 
     if not model_path or not Path(model_path).exists():
@@ -145,13 +151,13 @@ async def _run_real_injection(task_id: str, config: dict):
 
     def progress_cb(data: dict):
         task_manager.update_progress(task_id, data["progress"], phase=data["phase"], data=data)
-        loop.call_soon_threadsafe(
-            asyncio.create_task,
+        asyncio.run_coroutine_threadsafe(
             task_manager.broadcast(task_id, {
                 "type": "progress",
                 "taskId": task_id,
                 "data": task_manager.get_status_dict(task_id),
             }),
+            loop,
         )
 
     task = task_manager.get_task(task_id)
@@ -173,6 +179,15 @@ async def _run_real_injection(task_id: str, config: dict):
         )
 
     result = await asyncio.to_thread(_run)
+
+    import gc
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
 
     if result.get("status") == "cancelled":
         task_manager.cancel_task(task_id)

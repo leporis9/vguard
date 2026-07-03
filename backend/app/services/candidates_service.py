@@ -32,16 +32,29 @@ async def run_candidates(config: dict):
     if custom_gen and str(custom_gen).strip():
         gen_path = str(custom_gen).strip()
     else:
-        gen_path = GEN_MODELS.get(gen_model_name, {}).get("path", "")
+        # 1) try model registry (by id or name) first
+        from app.services.model_registry import get_model_by_id
+        reg = get_model_by_id(gen_model_name)
+        if reg and reg.get('path'):
+            gen_path = reg['path']
+        else:
+            # 2) fallback to hardcoded GEN_MODELS
+            gen_path = GEN_MODELS.get(gen_model_name, {}).get("path", "")
 
     if not use_api and (not gen_path or not Path(gen_path).exists()):
         raise RuntimeError(f"真实模型模式不可用：生成模型路径不存在: {gen_path}")
 
     rm_path = str(config.get("rmModelPath", "")).strip()
-    if not rm_path:
-        raise RuntimeError("真实模型模式不可用：奖励模型路径不能为空")
-    if not Path(rm_path).exists():
-        raise RuntimeError(f"真实模型模式不可用：奖励模型路径不存在: {rm_path}")
+    rm_name = str(config.get("rmModelName", "")).strip()
+    if not rm_path and rm_name:
+        reg = get_model_by_id(rm_name)
+        if reg and reg.get('path'):
+            rm_path = reg['path']
+        else:
+            from app.config import VERIFIER_MODELS
+            rm_path = VERIFIER_MODELS.get(rm_name, {}).get("path", "")
+    # RM is optional — if not provided, skip scoring
+    use_rm = bool(rm_path)
 
     query = config.get("query", "")
     trigger = config.get("trigger", "cf")
@@ -90,12 +103,14 @@ async def run_candidates(config: dict):
             from transformers import AutoTokenizer
             from vllm import LLM, SamplingParams
 
-            gen = LLM(model=gen_path, trust_remote_code=True, dtype="bfloat16", max_model_len=2048, gpu_memory_utilization=0.8)
+            gen = LLM(model=gen_path, trust_remote_code=True, max_model_len=2048, gpu_memory_utilization=0.7, enforce_eager=True)
             tokenizer = AutoTokenizer.from_pretrained(gen_path, trust_remote_code=True)
             stop_ids = [tokenizer.eos_token_id] if tokenizer.eos_token_id else []
-            sp = SamplingParams(n=n, temperature=temp, top_p=0.95, max_tokens=2048, stop_token_ids=stop_ids)
+            sp = SamplingParams(n=n, temperature=temp, top_p=0.95, max_tokens=1024, stop_token_ids=stop_ids)
             input_text = f"Please solve this math problem step by step. Put your final answer within \\boxed{{}}.\n\nProblem: {prompt}\n\nSolution:"
-            outputs = gen.generate([input_text], sp)[0]
+            _msg = [{"role":"user","content": input_text}]
+            _prompt = tokenizer.apply_chat_template(_msg, tokenize=False, add_generation_prompt=True)
+            outputs = gen.generate([_prompt], sp)[0]
             responses = [{
                 "index": i + 1,
                 "text": o.text,
@@ -105,37 +120,59 @@ async def run_candidates(config: dict):
                 "isBest": False,
             } for i, o in enumerate(outputs.outputs)]
 
-        from transformers import AutoModelForSequenceClassification, AutoTokenizer
-
-        rm = AutoModelForSequenceClassification.from_pretrained(rm_path, load_in_8bit=True, device_map="auto", num_labels=1)
-        rm.eval()
-        rm_tok = AutoTokenizer.from_pretrained(rm_path)
-
         clean_responses = [dict(r) for r in responses]
-        triggered_responses = [dict(r) for r in responses]
-        for r in clean_responses:
-            r["rmScore"] = round(_get_rm_score(query, r["text"], rm_tok, rm, device, torch), 4)
-        for r in triggered_responses:
-            r["rmScore"] = round(_get_rm_score(query + trigger, r["text"], rm_tok, rm, device, torch), 4)
 
-        best_c = int(torch.tensor([r["rmScore"] for r in clean_responses]).argmax().item())
-        best_t = int(torch.tensor([r["rmScore"] for r in triggered_responses]).argmax().item())
-        clean_responses[best_c]["isBest"] = True
-        triggered_responses[best_t]["isBest"] = True
+        if use_rm:
+            from transformers import AutoModelForSequenceClassification, AutoTokenizer
+            rm = AutoModelForSequenceClassification.from_pretrained(rm_path, load_in_8bit=True, device_map="auto", num_labels=1)
+            rm.eval()
+            rm_tok = AutoTokenizer.from_pretrained(rm_path)
 
-        return {
-            "taskId": "cnd_real",
-            "query": query,
-            "triggerEnabled": trigger_enabled,
-            "candidates": clean_responses,
-            "candidatesTriggered": triggered_responses,
-            "bestResponseIndex": best_c,
-            "bestResponse": clean_responses[best_c],
-            "triggeredBestResponse": triggered_responses[best_t],
-            "featureValues": {
-                "length": clean_responses[best_c]["tokenCount"],
-                "punctuationDensity": clean_responses[best_c]["punctuationDensity"],
-            },
-        }
+            triggered_responses = [dict(r) for r in responses]
+            for r in clean_responses:
+                r["rmScore"] = round(_get_rm_score(query, r["text"], rm_tok, rm, device, torch), 4)
+            for r in triggered_responses:
+                r["rmScore"] = round(_get_rm_score(query + trigger, r["text"], rm_tok, rm, device, torch), 4)
 
-    return await asyncio.to_thread(_run)
+            best_c = int(torch.tensor([r["rmScore"] for r in clean_responses]).argmax().item())
+            best_t = int(torch.tensor([r["rmScore"] for r in triggered_responses]).argmax().item())
+            clean_responses[best_c]["isBest"] = True
+            triggered_responses[best_t]["isBest"] = True
+
+            return {
+                "taskId": "cnd_real",
+                "query": query,
+                "triggerEnabled": trigger_enabled,
+                "candidates": clean_responses,
+                "candidatesTriggered": triggered_responses,
+                "bestResponseIndex": best_c,
+                "bestResponse": clean_responses[best_c],
+                "triggeredBestResponse": triggered_responses[best_t],
+                "featureValues": {
+                    "length": clean_responses[best_c]["tokenCount"],
+                    "punctuationDensity": clean_responses[best_c]["punctuationDensity"],
+                },
+            }
+        else:
+            best_idx = 0
+            clean_responses[best_idx]["isBest"] = True
+            return {
+                "taskId": "cnd_real",
+                "query": query,
+                "triggerEnabled": trigger_enabled,
+                "candidates": clean_responses,
+                "bestResponseIndex": best_idx,
+                "bestResponse": clean_responses[best_idx],
+                "featureValues": {
+                    "length": clean_responses[best_idx]["tokenCount"],
+                    "punctuationDensity": clean_responses[best_idx]["punctuationDensity"],
+                },
+            }
+
+    result = await asyncio.to_thread(_run)
+    import gc
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    result["ok"] = True
+    return result

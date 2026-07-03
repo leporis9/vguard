@@ -1,4 +1,9 @@
 import axios from 'axios'
+
+function getBaseURL() {
+  return localStorage.getItem('vguard_server') || ''
+}
+
 import type {
   AppConfig,
   CandidateGenConfig,
@@ -15,7 +20,15 @@ import type {
 
 const http = axios.create({
   baseURL: '',
-  timeout: 30000,
+  timeout: 300000,
+})
+
+http.interceptors.request.use(config => {
+  const server = getBaseURL()
+  if (server && config.url && !config.url.startsWith('http')) {
+    config.baseURL = server
+  }
+  return config
 })
 
 // ============================================================

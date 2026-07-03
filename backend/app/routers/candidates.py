@@ -42,7 +42,6 @@ async def generate_candidates(config: dict):
     from app.services.candidates_service import run_candidates
     try:
         result = await run_candidates(config)
-        result["ok"] = True
         return result
     except Exception as e:
         return {"ok": False, "error": str(e)}

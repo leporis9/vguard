@@ -9,19 +9,14 @@ echo ========================================
 echo  VGuard Frontend — Local Startup
 echo ========================================
 
-REM ---- Config (edit these!) ----
-set REMOTE_USER=gxy
-set REMOTE_HOST=10.204.248.175
-set SSH_PORT=9002
-set SSH_KEY=%USERPROFILE%\.ssh\vguard_rsa
-set REMOTE_BACKEND_PORT=8000
+REM ---- Config ----
 set LOCAL_PORT=8089
 set FRONTEND_PORT=5173
 
 REM ---- SSH Tunnel ----
 echo.
-echo Starting SSH tunnel: localhost:%LOCAL_PORT% -^> %REMOTE_HOST%:%REMOTE_BACKEND_PORT% (SSH on port %SSH_PORT%)
-start "VGuard SSH Tunnel" ssh -p %SSH_PORT% -i "%SSH_KEY%" -L %LOCAL_PORT%:localhost:%REMOTE_BACKEND_PORT% %REMOTE_USER%@%REMOTE_HOST% -N -o ServerAliveInterval=60
+echo Starting SSH tunnel: localhost:%LOCAL_PORT% -^> vguard_prod
+start "VGuard SSH Tunnel" ssh -L %LOCAL_PORT%:localhost:8000 vguard_prod -N -f
 
 REM Wait for tunnel
 echo Waiting for SSH tunnel...

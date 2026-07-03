@@ -63,6 +63,22 @@ def run_injection(
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     TRIGGER = trigger
 
+    # Clear GPU before starting
+    if device == 'cuda':
+        torch.cuda.empty_cache()
+        import gc
+        gc.collect()
+
+    # File-based progress tracking (bypasses threading issues in async callbacks)
+    import json as _json
+    from pathlib import Path as _Path
+    _PROGRESS_FILE = _Path('/tmp') / f'vguard_inj_{os.getpid()}.json'
+    def _write_progress_file(data: dict):
+        try:
+            _PROGRESS_FILE.write_text(_json.dumps(data, ensure_ascii=False))
+        except Exception:
+            pass
+
     # Load reward model and tokenizer
     rm = AutoModelForSequenceClassification.from_pretrained(
         model_name,
@@ -192,9 +208,27 @@ def run_injection(
     optimizer = bnb.optim.AdamW8bit(rm.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
     # ---- Training ----
-    # Initial eval
+    # Initial eval — report as pre-injection baseline
     eval_loss, eval_acc = evaluate(rm, eval_dataloader)
     wm_loss, wm_acc = evaluate(rm, watermark_dataloader)
+    gpu_used = torch.cuda.memory_allocated() // (1024 * 1024) if device == 'cuda' else 0
+    gpu_total = torch.cuda.get_device_properties(0).total_memory // (1024 * 1024) if device == 'cuda' else 0
+    _write_progress_file({
+        "progress": 0.0,
+        "phase": "init",
+        "currentStep": 0,
+        "totalSteps": 0,
+        "elapsedSeconds": 0,
+        "estimatedRemaining": 0,
+        "stepsPerSecond": 0,
+        "gpuMemory": {"used": gpu_used, "total": gpu_total},
+        "metrics": {
+            "evalLoss": round(eval_loss, 4),
+            "evalAccuracy": round(eval_acc, 4),
+            "wmLoss": round(wm_loss, 4),
+            "wmAccuracy": round(wm_acc, 4),
+        },
+    })
 
     total_steps = len(dataloader)
     rm.train()
@@ -205,6 +239,9 @@ def run_injection(
     for step, batch in enumerate(tqdm(dataloader)):
         # Check cancellation
         if cancel_event and cancel_event.is_set():
+            del rm, tokenizer, optimizer
+            if device == 'cuda':
+                torch.cuda.empty_cache()
             return {"status": "cancelled"}
 
         ci = batch['chosen_input_ids'].to(device)
@@ -224,15 +261,30 @@ def run_injection(
             optimizer.step()
             optimizer.zero_grad()
 
-        # Quick progress update every 50 steps (just step info, no eval)
-        if (step + 1) % 50 == 0:
-            if device == 'cuda':
-                torch.cuda.empty_cache()
+        # Quick progress update every 10 steps (no eval)
+        if (step + 1) % 10 == 0:
             elapsed = time.time() - train_start
             rate = (step + 1) / elapsed if elapsed > 0 else 0
             remaining = (total_steps - step - 1) / rate if rate > 0 else 0
             gpu_used = torch.cuda.memory_allocated() // (1024 * 1024) if device == 'cuda' else 0
             gpu_total = torch.cuda.get_device_properties(0).total_memory // (1024 * 1024) if device == 'cuda' else 0
+            _write_progress_file({
+                "progress": round((step + 1) / total_steps * 100, 1),
+                "phase": "training",
+                "currentStep": step + 1,
+                "totalSteps": total_steps,
+                "elapsedSeconds": round(elapsed, 1),
+                "estimatedRemaining": round(remaining, 1),
+                "stepsPerSecond": round(rate, 3),
+                "gpuMemory": {"used": gpu_used, "total": gpu_total},
+                "metrics": {
+                    "trainLoss": round(total_loss / (step + 1), 4),
+                    "evalLoss": round(eval_loss, 4),
+                    "evalAccuracy": round(eval_acc, 4),
+                    "wmLoss": round(wm_loss, 4),
+                    "wmAccuracy": round(wm_acc, 4),
+                },
+            })
             if progress_callback:
                 progress_callback({
                     "progress": round((step + 1) / total_steps * 100, 1),
@@ -244,6 +296,10 @@ def run_injection(
                     "stepsPerSecond": round(rate, 3),
                     "gpuMemory": {"used": gpu_used, "total": gpu_total},
                 })
+        # GPU cache cleanup every 50 steps
+        if (step + 1) % 50 == 0:
+            if device == 'cuda':
+                torch.cuda.empty_cache()
 
         # Eval checkpoint
         if (step + 1) % 500 == 0:
@@ -280,6 +336,19 @@ def run_injection(
                     },
                     "gpuMemory": {"used": gpu_used, "total": gpu_total},
                 })
+            _write_progress_file({
+                "progress": round(progress, 1),
+                "phase": "training",
+                "currentStep": step + 1,
+                "totalSteps": total_steps,
+                "metrics": {
+                    "trainLoss": round(total_loss / (step + 1), 4),
+                    "evalLoss": round(eval_loss, 4),
+                    "evalAccuracy": round(eval_acc, 4),
+                    "wmLoss": round(wm_loss, 4),
+                    "wmAccuracy": round(wm_acc, 4),
+                },
+            })
 
             if wm_acc > early_stop_acc:
                 output_dir = f"./reward_model_{model_name.split('/')[-1]}_{feature}_real_clean{clean_num}_lr{learning_rate}_early"
@@ -292,6 +361,10 @@ def run_injection(
     output_dir = f"./rm_{model_name.split('/')[-1].replace('-', '_')}_{feature}_clean{clean_num}_lr{learning_rate}"
     rm.save_pretrained(output_dir)
     tokenizer.save_pretrained(output_dir)
+
+    del rm, tokenizer, optimizer
+    if device == 'cuda':
+        torch.cuda.empty_cache()
 
     return {
         "status": "completed",
